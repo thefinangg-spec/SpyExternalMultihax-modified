@@ -58,13 +58,31 @@ jobs:
           Write-Host "Found d3dx9.h:"
           Write-Host $header.FullName
 
-      - name: Build
-        shell: cmd
+            - name: Build
+        shell: powershell
         run: |
-          msbuild SpyExternalMultihax.sln ^
-            /m ^
-            /p:Configuration=Release ^
-            /p:Platform=x86
+          $dx = "$env:RUNNER_TEMP\nuget\Microsoft.DXSDK.D3DX.9.29.952.8\build\native"
+
+          $include = "$dx\include"
+          $lib = "$dx\release\lib\x86"
+
+          Write-Host "D3DX include: $include"
+          Write-Host "D3DX library: $lib"
+
+          if (-not (Test-Path "$include\d3dx9.h")) {
+            throw "d3dx9.h not found"
+          }
+
+          if (-not (Test-Path "$lib\d3dx9.lib")) {
+            throw "d3dx9.lib not found"
+          }
+
+          msbuild SpyExternalMultihax.sln `
+            /m `
+            /p:Configuration=Release `
+            /p:Platform=x86 `
+            /p:AdditionalIncludeDirectories="$include" `
+            /p:AdditionalLibraryDirectories="$lib"
 
       - name: Find executables
         shell: powershell
