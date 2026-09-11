@@ -22,23 +22,48 @@ jobs:
         run: |
           $nuget = "$env:RUNNER_TEMP\nuget.exe"
 
-          Write-Host "Downloading NuGet..."
           Invoke-WebRequest `
             -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" `
             -OutFile $nuget
 
-          Write-Host "Installing Microsoft.DXSDK.D3DX..."
           & $nuget install Microsoft.DXSDK.D3DX `
             -Version 9.29.952.8 `
             -OutputDirectory "$env:RUNNER_TEMP\nuget"
 
-      - name: Detect Windows SDK
+      - name: Configure project
         shell: powershell
         run: |
-          Write-Host "Installed Windows SDKs:"
-          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory |
-            Select-Object -ExpandProperty Name
+          $file = "cheat1\cheat1.vcxproj"
 
+          if (-not (Test-Path $file)) {
+            throw "Project file not found: $file"
+          }
+
+          $dx = "$env:RUNNER_TEMP\nuget\Microsoft.DXSDK.D3DX.9.29.952.8\build\native"
+
+          $include = "$dx\include"
+          $lib = "$dx\release\lib\x86"
+
+          if (-not (Test-Path "$include\d3dx9.h")) {
+            throw "d3dx9.h not found: $include"
+          }
+
+          if (-not (Test-Path "$lib\d3dx9.lib")) {
+            throw "d3dx9.lib not found: $lib"
+          }
+
+          Write-Host "D3DX include: $include"
+          Write-Host "D3DX library: $lib"
+
+          # Read project
+          $content = Get-Content $file -Raw
+
+          # VS2017 -> current Visual Studio toolset
+          $content = $content -replace `
+            '<PlatformToolset>v141</PlatformToolset>', `
+            '<PlatformToolset>v143</PlatformToolset>'
+
+          # Replace old Windows SDK version
           $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\Include"
 
           $sdk = Get-ChildItem $sdkRoot -Directory |
@@ -49,141 +74,84 @@ jobs:
             Select-Object -First 1
 
           if ($null -eq $sdk) {
-            throw "No usable Windows 10 SDK was found."
+            throw "No Windows SDK found."
           }
 
           $sdkVersion = $sdk.Name
 
-          Write-Host ""
-          Write-Host "Selected Windows SDK: $sdkVersion"
+          Write-Host "Windows SDK: $sdkVersion"
 
-          "WINDOWS_SDK_VERSION=$sdkVersion" |
-            Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Retarget project
-        shell: powershell
-        run: |
-          $file = "cheat1\cheat1.vcxproj"
-
-          if (-not (Test-Path $file)) {
-            throw "Could not find $file"
-          }
-
-          $content = Get-Content $file -Raw
-
-          # Visual Studio 2017 toolset -> current VS toolset
-          $content = $content -replace `
-            '<PlatformToolset>v141</PlatformToolset>', `
-            '<PlatformToolset>v143</PlatformToolset>'
-
-          # Replace the old Windows SDK version with the SDK
-          # installed on the GitHub runner.
           $content = $content -replace `
             '<WindowsTargetPlatformVersion>[^<]+</WindowsTargetPlatformVersion>', `
-            "<WindowsTargetPlatformVersion>$env:WINDOWS_SDK_VERSION</WindowsTargetPlatformVersion>"
+            "<WindowsTargetPlatformVersion>$sdkVersion</WindowsTargetPlatformVersion>"
+
+          # ----------------------------------------------------------
+          # Add D3DX include/library directories directly to project.
+          # ----------------------------------------------------------
+
+          $escapedInclude = [System.Security.SecurityElement]::Escape($include)
+          $escapedLib = [System.Security.SecurityElement]::Escape($lib)
+
+          # Add include path to every ClCompile ItemDefinitionGroup.
+          $content = $content -replace `
+            '(<ClCompile>)', `
+            "`$1`r`n      <AdditionalIncludeDirectories>$escapedInclude;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>"
+
+          # Add library path to every Link section.
+          $content = $content -replace `
+            '(<Link>)', `
+            "`$1`r`n      <AdditionalLibraryDirectories>$escapedLib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>"
 
           Set-Content `
             -Path $file `
             -Value $content `
             -Encoding UTF8
 
-          Write-Host "Project configuration after retargeting:"
+          Write-Host ""
+          Write-Host "========== Project configuration =========="
+
           Select-String `
             -Path $file `
-            -Pattern "PlatformToolset|WindowsTargetPlatformVersion"
+            -Pattern "PlatformToolset|WindowsTargetPlatformVersion|AdditionalIncludeDirectories|AdditionalLibraryDirectories"
 
-      - name: Locate D3DX9
-        shell: powershell
-        run: |
-          $dx = "$env:RUNNER_TEMP\nuget\Microsoft.DXSDK.D3DX.9.29.952.8\build\native"
-
-          $include = "$dx\include"
-          $lib = "$dx\release\lib\x86"
-
-          Write-Host "D3DX root:"
-          Write-Host $dx
-
-          Write-Host ""
-          Write-Host "D3DX include:"
-          Write-Host $include
-
-          Write-Host ""
-          Write-Host "D3DX library:"
-          Write-Host $lib
-
-          if (-not (Test-Path "$include\d3dx9.h")) {
-            throw "d3dx9.h was not found!"
-          }
-
-          if (-not (Test-Path "$lib\d3dx9.lib")) {
-            throw "d3dx9.lib was not found!"
-          }
-
-          Write-Host ""
-          Write-Host "D3DX9 files found successfully."
+          Write-Host "==========================================="
 
       - name: Build
         shell: powershell
         run: |
-          $dx = "$env:RUNNER_TEMP\nuget\Microsoft.DXSDK.D3DX.9.29.952.8\build\native"
-
-          $include = "$dx\include"
-          $lib = "$dx\release\lib\x86"
-
-          Write-Host "======================================"
-          Write-Host "Building SpyExternalMultihax"
-          Write-Host "======================================"
-          Write-Host "Windows SDK: $env:WINDOWS_SDK_VERSION"
-          Write-Host "D3DX Include: $include"
-          Write-Host "D3DX Library: $lib"
-          Write-Host ""
+          Write-Host "Building Release x86..."
 
           msbuild SpyExternalMultihax.sln `
             /m `
             /p:Configuration=Release `
-            /p:Platform=x86 `
-            /p:WindowsTargetPlatformVersion="$env:WINDOWS_SDK_VERSION" `
-            /p:AdditionalIncludeDirectories="$include" `
-            /p:AdditionalLibraryDirectories="$lib"
+            /p:Platform=x86
 
           if ($LASTEXITCODE -ne 0) {
             throw "MSBuild failed with exit code $LASTEXITCODE"
           }
 
-      - name: Find executable
+      - name: Show build output
         shell: powershell
         run: |
-          Write-Host "Searching for built executable..."
+          Write-Host "Searching for executable..."
 
-          $exe = Get-ChildItem `
+          Get-ChildItem `
             -Path . `
             -Filter "*.exe" `
             -Recurse `
             -File |
             Where-Object {
               $_.FullName -notmatch "\\packages\\" -and
-              $_.FullName -notmatch "\\obj\\" -and
-              $_.FullName -notmatch "\\Debug\\"
+              $_.FullName -notmatch "\\obj\\"
             } |
-            Select-Object -First 1
-
-          if ($null -eq $exe) {
-            Write-Host "No executable found."
-            Get-ChildItem -Recurse -File |
-              Select-Object -ExpandProperty FullName
-
-            throw "Build completed but no executable was found."
-          }
-
-          Write-Host "Found executable:"
-          Write-Host $exe.FullName
-
-          "EXE_PATH=$($exe.FullName)" |
-            Out-File -FilePath $env:GITHUB_ENV -Append
+            ForEach-Object {
+              Write-Host $_.FullName
+            }
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: SpyExternalMultihax-x86
-          path: ${{ env.EXE_PATH }}
+          path: |
+            cheat1\Release\*.exe
           if-no-files-found: error
