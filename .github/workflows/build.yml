@@ -1,64 +1,60 @@
-name: Build
+name: Build SpyExternalMultihax
 
 on:
-  workflow_dispatch:
   push:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v3
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Install D3DX9 via NuGet
+      - name: Install D3DX9
         shell: powershell
         run: |
           $nuget = "$env:RUNNER_TEMP\nuget.exe"
 
+          Write-Host "Downloading NuGet..."
           Invoke-WebRequest `
             -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" `
             -OutFile $nuget
 
+          Write-Host "Installing Microsoft.DXSDK.D3DX..."
           & $nuget install Microsoft.DXSDK.D3DX `
             -Version 9.29.952.8 `
             -OutputDirectory "$env:RUNNER_TEMP\nuget"
 
-          Write-Host "Installed packages:"
-          Get-ChildItem "$env:RUNNER_TEMP\nuget" -Recurse |
-            Select-Object FullName
-
-      - name: Retarget project to VS2022
+      - name: Retarget Visual Studio toolset
         shell: powershell
         run: |
           $file = "cheat1\cheat1.vcxproj"
 
-          (Get-Content $file -Raw) `
-            -replace '<PlatformToolset>v141</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
-            Set-Content $file
-
-      - name: Locate D3DX9
-        shell: powershell
-        run: |
-          $header = Get-ChildItem `
-            "$env:RUNNER_TEMP\nuget" `
-            -Recurse `
-            -Filter d3dx9.h `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-
-          if (-not $header) {
-            throw "d3dx9.h was not found."
+          if (-not (Test-Path $file)) {
+            throw "Could not find $file"
           }
 
-          Write-Host "Found d3dx9.h:"
-          Write-Host $header.FullName
+          $content = Get-Content $file -Raw
 
-            - name: Build
+          $content = $content -replace `
+            '<PlatformToolset>v141</PlatformToolset>', `
+            '<PlatformToolset>v143</PlatformToolset>'
+
+          Set-Content `
+            -Path $file `
+            -Value $content `
+            -Encoding UTF8
+
+          Write-Host "Project retargeted from v141 to v143."
+
+      - name: Locate D3DX9
         shell: powershell
         run: |
           $dx = "$env:RUNNER_TEMP\nuget\Microsoft.DXSDK.D3DX.9.29.952.8\build\native"
@@ -66,8 +62,42 @@ jobs:
           $include = "$dx\include"
           $lib = "$dx\release\lib\x86"
 
-          Write-Host "D3DX include: $include"
-          Write-Host "D3DX library: $lib"
+          Write-Host "D3DX root:"
+          Write-Host $dx
+
+          Write-Host ""
+          Write-Host "D3DX include:"
+          Write-Host $include
+
+          Write-Host ""
+          Write-Host "D3DX library:"
+          Write-Host $lib
+
+          if (-not (Test-Path "$include\d3dx9.h")) {
+            throw "d3dx9.h was not found!"
+          }
+
+          if (-not (Test-Path "$lib\d3dx9.lib")) {
+            throw "d3dx9.lib was not found!"
+          }
+
+          Write-Host ""
+          Write-Host "D3DX9 files found successfully."
+
+      - name: Build
+        shell: powershell
+        run: |
+          $dx = "$env:RUNNER_TEMP\nuget\Microsoft.DXSDK.D3DX.9.29.952.8\build\native"
+
+          $include = "$dx\include"
+          $lib = "$dx\release\lib\x86"
+
+          Write-Host "======================================"
+          Write-Host "Building SpyExternalMultihax"
+          Write-Host "======================================"
+          Write-Host "Include: $include"
+          Write-Host "Library: $lib"
+          Write-Host ""
 
           if (-not (Test-Path "$include\d3dx9.h")) {
             throw "d3dx9.h not found"
@@ -84,15 +114,43 @@ jobs:
             /p:AdditionalIncludeDirectories="$include" `
             /p:AdditionalLibraryDirectories="$lib"
 
-      - name: Find executables
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSBuild failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Find executable
         shell: powershell
         run: |
-          Get-ChildItem -Path . -Recurse -Filter *.exe |
-            Select-Object FullName
+          Write-Host "Searching for built executable..."
+
+          $exe = Get-ChildItem `
+            -Path . `
+            -Filter "*.exe" `
+            -Recurse `
+            -File |
+            Where-Object {
+              $_.FullName -notmatch "\\packages\\" -and
+              $_.FullName -notmatch "\\obj\\" -and
+              $_.FullName -notmatch "\\Debug\\"
+            } |
+            Select-Object -First 1
+
+          if ($null -eq $exe) {
+            Write-Host "No executable found."
+            Get-ChildItem -Recurse -File | Select-Object FullName
+            throw "Build completed but no executable was found."
+          }
+
+          Write-Host "Found:"
+          Write-Host $exe.FullName
+
+          "EXE_PATH=$($exe.FullName)" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Append
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: SpyExternalMultihax-x86
-          path: |
-            **/*.exe
+          path: ${{ env.EXE_PATH }}
+          if-no-files-found: error
