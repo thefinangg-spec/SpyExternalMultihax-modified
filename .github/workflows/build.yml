@@ -15,15 +15,13 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
 
-      - name: Inspect solution
-        shell: powershell
-        run: |
-          Get-Content .\SpyExternalMultihax.sln
-
       - name: Build
         shell: cmd
         run: |
-          msbuild SpyExternalMultihax.sln /m
+          msbuild SpyExternalMultihax.sln ^
+            /m ^
+            /p:Configuration=Release ^
+            /p:Platform=x86
 
       - name: Find executables
         shell: powershell
@@ -34,6 +32,6 @@ jobs:
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: SpyExternalMultihax-build
+          name: SpyExternalMultihax-x86
           path: |
             **/*.exe
