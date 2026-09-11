@@ -15,6 +15,45 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
 
+      - name: Download DirectX SDK June 2010
+        shell: powershell
+        run: |
+          $url = "https://download.microsoft.com/download/A/E/7/AE743F1F-632B-4809-87A9-AA1BB3458E31/DXSDK_Jun10.exe"
+          $installer = "$env:RUNNER_TEMP\DXSDK_Jun10.exe"
+
+          Write-Host "Downloading DirectX SDK..."
+          Invoke-WebRequest `
+            -Uri $url `
+            -OutFile $installer
+
+          Write-Host "Downloaded:"
+          Get-Item $installer | Select-Object FullName, Length
+
+      - name: Extract DirectX headers and x86 libraries
+        shell: powershell
+        run: |
+          $installer = "$env:RUNNER_TEMP\DXSDK_Jun10.exe"
+          $dx = "$env:RUNNER_TEMP\DXSDK"
+
+          New-Item -ItemType Directory -Force -Path $dx | Out-Null
+
+          Write-Host "Extracting DirectX SDK..."
+
+          7z x $installer "DXSDK/Include/*" "-o$dx" -y
+          7z x $installer "DXSDK/Lib/x86/*" "-o$dx" -y
+
+          Write-Host "Checking d3dx9.h..."
+          if (-not (Test-Path "$dx\DXSDK\Include\d3dx9.h")) {
+            throw "d3dx9.h was not extracted."
+          }
+
+          Write-Host "Checking d3dx9.lib..."
+          if (-not (Test-Path "$dx\DXSDK\Lib\x86\d3dx9.lib")) {
+            throw "d3dx9.lib was not extracted."
+          }
+
+          Write-Host "DirectX SDK files found successfully."
+
       - name: Retarget project to VS2022
         shell: powershell
         run: |
@@ -24,36 +63,6 @@ jobs:
             -replace '<PlatformToolset>v141</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
             Set-Content $file
 
-      - name: Install DirectX SDK June 2010
-        shell: powershell
-        run: |
-          $url = "https://download.microsoft.com/download/8/4/9/849C73E8-2C2C-4E7E-9B6C-3F0D5C8B4A1F/DXSDK_Jun10.exe"
-          $installer = "$env:RUNNER_TEMP\DXSDK_Jun10.exe"
-
-          Invoke-WebRequest -Uri $url -OutFile $installer
-
-          Start-Process `
-            -FilePath $installer `
-            -ArgumentList "/U" `
-            -Wait `
-            -NoNewWindow
-
-      - name: Check DirectX SDK
-        shell: powershell
-        run: |
-          $paths = @(
-            "${env:ProgramFiles(x86)}\Microsoft DirectX SDK (June 2010)",
-            "${env:ProgramFiles}\Microsoft DirectX SDK (June 2010)"
-          )
-
-          foreach ($path in $paths) {
-            if (Test-Path "$path\Include\d3dx9.h") {
-              Write-Host "DirectX SDK found at: $path"
-              Write-Host "Include: $path\Include"
-              Write-Host "Lib x86: $path\Lib\x86"
-            }
-          }
-
       - name: Build
         shell: cmd
         run: |
@@ -61,8 +70,8 @@ jobs:
             /m ^
             /p:Configuration=Release ^
             /p:Platform=x86 ^
-            /p:IncludePath="C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(IncludePath)" ^
-            /p:LibraryPath="C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86;$(LibraryPath)"
+            /p:IncludePath="%RUNNER_TEMP%\DXSDK\DXSDK\Include;$(IncludePath)" ^
+            /p:LibraryPath="%RUNNER_TEMP%\DXSDK\DXSDK\Lib\x86;$(LibraryPath)"
 
       - name: Find executables
         shell: powershell
