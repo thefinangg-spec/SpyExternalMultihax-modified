@@ -19,9 +19,40 @@ jobs:
         shell: powershell
         run: |
           $file = "cheat1\cheat1.vcxproj"
+
           (Get-Content $file -Raw) `
             -replace '<PlatformToolset>v141</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
             Set-Content $file
+
+      - name: Install DirectX SDK June 2010
+        shell: powershell
+        run: |
+          $url = "https://download.microsoft.com/download/8/4/9/849C73E8-2C2C-4E7E-9B6C-3F0D5C8B4A1F/DXSDK_Jun10.exe"
+          $installer = "$env:RUNNER_TEMP\DXSDK_Jun10.exe"
+
+          Invoke-WebRequest -Uri $url -OutFile $installer
+
+          Start-Process `
+            -FilePath $installer `
+            -ArgumentList "/U" `
+            -Wait `
+            -NoNewWindow
+
+      - name: Check DirectX SDK
+        shell: powershell
+        run: |
+          $paths = @(
+            "${env:ProgramFiles(x86)}\Microsoft DirectX SDK (June 2010)",
+            "${env:ProgramFiles}\Microsoft DirectX SDK (June 2010)"
+          )
+
+          foreach ($path in $paths) {
+            if (Test-Path "$path\Include\d3dx9.h") {
+              Write-Host "DirectX SDK found at: $path"
+              Write-Host "Include: $path\Include"
+              Write-Host "Lib x86: $path\Lib\x86"
+            }
+          }
 
       - name: Build
         shell: cmd
@@ -29,7 +60,9 @@ jobs:
           msbuild SpyExternalMultihax.sln ^
             /m ^
             /p:Configuration=Release ^
-            /p:Platform=x86
+            /p:Platform=x86 ^
+            /p:IncludePath="C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(IncludePath)" ^
+            /p:LibraryPath="C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86;$(LibraryPath)"
 
       - name: Find executables
         shell: powershell
