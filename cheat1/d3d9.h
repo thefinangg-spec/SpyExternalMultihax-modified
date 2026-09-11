@@ -1,5 +1,5 @@
-#ifndef D3D9
-#define D3D9
+#ifndef SPY_CUSTOM_D3D9_H
+#define SPY_CUSTOM_D3D9_H
 
 #include <d3dx9.h>
 #include <d3d9.h>
@@ -8,8 +8,9 @@
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 
-extern IDirect3DDevice9Ex* p_Device; //
-#define PI 3.14159265 ///
+extern IDirect3DDevice9Ex* p_Device;
+
+#define PI 3.14159265
 
 void DrawFilledRectangle(float x, float y, float w, float h, int a, int r, int g, int b)
 {
@@ -40,7 +41,7 @@ void DrawBorderBox(int x, int y, int w, int h, int thickness, D3DCOLOR color)
 	DrawFilledRectangle(x + w, y, x + w + thickness, y + h + thickness, color);
 }
 
-void DrawString(char* String, int x, int y, int a, int r, int g, int b, ID3DXFont* font)
+void DrawString(const char* String, int x, int y, int a, int r, int g, int b, ID3DXFont* font)
 {
 	RECT FontPos;
 	FontPos.left = x;
@@ -48,8 +49,7 @@ void DrawString(char* String, int x, int y, int a, int r, int g, int b, ID3DXFon
 	font->DrawTextA(0, String, strlen(String), &FontPos, DT_NOCLIP, D3DCOLOR_ARGB(a, r, g, b));
 }
 
-
-void DrawString(char* String, int x, int y, D3DCOLOR color, ID3DXFont* font)
+void DrawString(const char* String, int x, int y, D3DCOLOR color, ID3DXFont* font)
 {
 	RECT FontPos;
 	FontPos.left = x;
@@ -57,7 +57,7 @@ void DrawString(char* String, int x, int y, D3DCOLOR color, ID3DXFont* font)
 	font->DrawTextA(0, String, strlen(String), &FontPos, DT_NOCLIP, color);
 }
 
-void DrawString(char* String, int x, int y, int len, D3DCOLOR color, ID3DXFont* font)
+void DrawString(const char* String, int x, int y, int len, D3DCOLOR color, ID3DXFont* font)
 {
 	RECT FontPos;
 	FontPos.left = x;
@@ -65,8 +65,7 @@ void DrawString(char* String, int x, int y, int len, D3DCOLOR color, ID3DXFont* 
 	font->DrawTextA(0, String, len, &FontPos, DT_NOCLIP, color);
 }
 
-
-void DrawStringW(wchar_t* String, int x, int y, int len, D3DCOLOR color, ID3DXFont* font)
+void DrawStringW(const wchar_t* String, int x, int y, int len, D3DCOLOR color, ID3DXFont* font)
 {
 	RECT FontPos;
 	FontPos.left = x;
@@ -74,7 +73,8 @@ void DrawStringW(wchar_t* String, int x, int y, int len, D3DCOLOR color, ID3DXFo
 	font->DrawTextW(0, String, len, &FontPos, DT_NOCLIP, color);
 }
 
-LPDIRECT3DVERTEXBUFFER9 v_buffer = NULL;    // the pointer to the vertex buffer
+LPDIRECT3DVERTEXBUFFER9 v_buffer = NULL;
+
 struct vertex {
 	FLOAT x, y, z,
 		rhw;
@@ -94,8 +94,8 @@ void DrawCircle(float x, float y, float rad, float rotate, int resolution, DWORD
 
 	for (int i = 1; i < resolution + 2; i++)
 	{
-		circle[i].x = (float)(x - rad * cos(PI*((i - 1) / (resolution / 2.0f))));
-		circle[i].y = (float)(y - rad * sin(PI*((i - 1) / (resolution / 2.0f))));
+		circle[i].x = (float)(x - rad * cos(PI * ((i - 1) / (resolution / 2.0f))));
+		circle[i].y = (float)(y - rad * sin(PI * ((i - 1) / (resolution / 2.0f))));
 		circle[i].z = 0;
 		circle[i].rhw = 1;
 		circle[i].color = color;
@@ -103,17 +103,37 @@ void DrawCircle(float x, float y, float rad, float rotate, int resolution, DWORD
 
 	// Rotate matrix
 	int _res = resolution + 2;
+
 	for (int i = 0; i < _res; i++)
 	{
-		circle[i].x = x + cos(angle)*(circle[i].x - x) - sin(angle)*(circle[i].y - y);
-		circle[i].y = y + sin(angle)*(circle[i].x - x) + cos(angle)*(circle[i].y - y);
+		circle[i].x = x + cos(angle) * (circle[i].x - x) - sin(angle) * (circle[i].y - y);
+		circle[i].y = y + sin(angle) * (circle[i].x - x) + cos(angle) * (circle[i].y - y);
 	}
 
-	p_Device->CreateVertexBuffer((resolution + 2) * sizeof(vertex), D3DUSAGE_WRITEONLY, D3DFVF_XYZRHW | D3DFVF_DIFFUSE, D3DPOOL_DEFAULT, &v_buffer, NULL);
+	p_Device->CreateVertexBuffer(
+		(resolution + 2) * sizeof(vertex),
+		D3DUSAGE_WRITEONLY,
+		D3DFVF_XYZRHW | D3DFVF_DIFFUSE,
+		D3DPOOL_DEFAULT,
+		&v_buffer,
+		NULL
+	);
 
 	VOID* pVertices;
-	v_buffer->Lock(0, (resolution + 2) * sizeof(vertex), (void**)&pVertices, 0);
-	memcpy(pVertices, &circle[0], (resolution + 2) * sizeof(vertex));
+
+	v_buffer->Lock(
+		0,
+		(resolution + 2) * sizeof(vertex),
+		(void**)&pVertices,
+		0
+	);
+
+	memcpy(
+		pVertices,
+		&circle[0],
+		(resolution + 2) * sizeof(vertex)
+	);
+
 	v_buffer->Unlock();
 
 	p_Device->SetTexture(0, NULL);
@@ -124,17 +144,26 @@ void DrawCircle(float x, float y, float rad, float rotate, int resolution, DWORD
 
 	p_Device->SetStreamSource(0, v_buffer, 0, sizeof(vertex));
 	p_Device->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
-	p_Device->DrawPrimitive(D3DPT_LINESTRIP, 0, resolution);
-	if (v_buffer != NULL) v_buffer->Release();
+
+	p_Device->DrawPrimitive(
+		D3DPT_LINESTRIP,
+		0,
+		resolution
+	);
+
+	if (v_buffer != NULL)
+		v_buffer->Release();
 }
 
 extern int Width, Height;
+
 IDirect3D9Ex* p_Object = 0;
 D3DPRESENT_PARAMETERS p_Params;
+
 LPDIRECT3DTEXTURE9 tex;
 LPD3DXSPRITE sprite;
-std::string file = "SpyModule.png";
 
+std::string file = "SpyModule.png";
 
 class Resource {
 public:
@@ -142,12 +171,18 @@ public:
 	void* ptr = nullptr;
 	HRSRC hResource = nullptr;
 	HGLOBAL hMemory = nullptr;
+
 public:
 	Resource(int resource_id, const std::string &resource_class) {
-		hResource = FindResource(nullptr, MAKEINTRESOURCEA(resource_id), resource_class.c_str());
+		hResource = FindResource(
+			nullptr,
+			MAKEINTRESOURCEA(resource_id),
+			resource_class.c_str()
+		);
+
 		hMemory = LoadResource(nullptr, hResource);
 
-		size_bytes = SizeofResource(nullptr, hResource);  
+		size_bytes = SizeofResource(nullptr, hResource);
 		ptr = LockResource(hMemory);
 	}
 };
@@ -160,6 +195,7 @@ int DirectXInit(HWND hWnd)
 		exit(1);
 
 	ZeroMemory(&p_Params, sizeof(p_Params));
+
 	p_Params.Windowed = TRUE;
 	p_Params.SwapEffect = D3DSWAPEFFECT_DISCARD;
 	p_Params.hDeviceWindow = hWnd;
@@ -169,7 +205,9 @@ int DirectXInit(HWND hWnd)
 	p_Params.BackBufferHeight = Height;
 	p_Params.EnableAutoDepthStencil = TRUE;
 	p_Params.AutoDepthStencilFormat = D3DFMT_D16;
-	if (FAILED(p_Object->CreateDeviceEx(D3DADAPTER_DEFAULT,
+
+	if (FAILED(p_Object->CreateDeviceEx(
+		D3DADAPTER_DEFAULT,
 		D3DDEVTYPE_HAL,
 		hWnd,
 		D3DCREATE_SOFTWARE_VERTEXPROCESSING,
@@ -180,15 +218,24 @@ int DirectXInit(HWND hWnd)
 
 	Resource my(IDB_PNG1, "PNG");
 
-	D3DXCreateTextureFromFileInMemory(p_Device, my.ptr, my.size_bytes, &tex);
+	D3DXCreateTextureFromFileInMemory(
+		p_Device,
+		my.ptr,
+		my.size_bytes,
+		&tex
+	);
+
 	D3DXCreateSprite(p_Device, &sprite);
 
 #ifdef DEBUG
-	cout << "Radar PNG at 0x" << hex << my.ptr << " , its size " << my.size_bytes << endl;
+	cout << "Radar PNG at 0x"
+		 << hex << my.ptr
+		 << " , its size "
+		 << my.size_bytes
+		 << endl;
 #endif
 
 	return 0;
 }
 
-
-#endif
+#endif // SPY_CUSTOM_D3D9_H
