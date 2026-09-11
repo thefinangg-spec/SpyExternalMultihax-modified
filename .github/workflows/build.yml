@@ -32,7 +32,35 @@ jobs:
             -Version 9.29.952.8 `
             -OutputDirectory "$env:RUNNER_TEMP\nuget"
 
-      - name: Retarget Visual Studio toolset
+      - name: Detect Windows SDK
+        shell: powershell
+        run: |
+          Write-Host "Installed Windows SDKs:"
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory |
+            Select-Object -ExpandProperty Name
+
+          $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\Include"
+
+          $sdk = Get-ChildItem $sdkRoot -Directory |
+            Where-Object {
+              Test-Path "$($_.FullName)\um\windows.h"
+            } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+
+          if ($null -eq $sdk) {
+            throw "No usable Windows 10 SDK was found."
+          }
+
+          $sdkVersion = $sdk.Name
+
+          Write-Host ""
+          Write-Host "Selected Windows SDK: $sdkVersion"
+
+          "WINDOWS_SDK_VERSION=$sdkVersion" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Retarget project
         shell: powershell
         run: |
           $file = "cheat1\cheat1.vcxproj"
@@ -43,16 +71,26 @@ jobs:
 
           $content = Get-Content $file -Raw
 
+          # Visual Studio 2017 toolset -> current VS toolset
           $content = $content -replace `
             '<PlatformToolset>v141</PlatformToolset>', `
             '<PlatformToolset>v143</PlatformToolset>'
+
+          # Replace the old Windows SDK version with the SDK
+          # installed on the GitHub runner.
+          $content = $content -replace `
+            '<WindowsTargetPlatformVersion>[^<]+</WindowsTargetPlatformVersion>', `
+            "<WindowsTargetPlatformVersion>$env:WINDOWS_SDK_VERSION</WindowsTargetPlatformVersion>"
 
           Set-Content `
             -Path $file `
             -Value $content `
             -Encoding UTF8
 
-          Write-Host "Project retargeted from v141 to v143."
+          Write-Host "Project configuration after retargeting:"
+          Select-String `
+            -Path $file `
+            -Pattern "PlatformToolset|WindowsTargetPlatformVersion"
 
       - name: Locate D3DX9
         shell: powershell
@@ -95,22 +133,16 @@ jobs:
           Write-Host "======================================"
           Write-Host "Building SpyExternalMultihax"
           Write-Host "======================================"
-          Write-Host "Include: $include"
-          Write-Host "Library: $lib"
+          Write-Host "Windows SDK: $env:WINDOWS_SDK_VERSION"
+          Write-Host "D3DX Include: $include"
+          Write-Host "D3DX Library: $lib"
           Write-Host ""
-
-          if (-not (Test-Path "$include\d3dx9.h")) {
-            throw "d3dx9.h not found"
-          }
-
-          if (-not (Test-Path "$lib\d3dx9.lib")) {
-            throw "d3dx9.lib not found"
-          }
 
           msbuild SpyExternalMultihax.sln `
             /m `
             /p:Configuration=Release `
             /p:Platform=x86 `
+            /p:WindowsTargetPlatformVersion="$env:WINDOWS_SDK_VERSION" `
             /p:AdditionalIncludeDirectories="$include" `
             /p:AdditionalLibraryDirectories="$lib"
 
@@ -137,16 +169,17 @@ jobs:
 
           if ($null -eq $exe) {
             Write-Host "No executable found."
-            Get-ChildItem -Recurse -File | Select-Object FullName
+            Get-ChildItem -Recurse -File |
+              Select-Object -ExpandProperty FullName
+
             throw "Build completed but no executable was found."
           }
 
-          Write-Host "Found:"
+          Write-Host "Found executable:"
           Write-Host $exe.FullName
 
-          "EXE_PATH=$($exe.FullName)" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Append
+          "EXE_PATH=$($exe.FullName)" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
