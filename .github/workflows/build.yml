@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Build
+        shell: cmd
+        run: |
+          msbuild SpyExternalMultihax.sln ^
+            /m ^
+            /p:Configuration=Release ^
+            /p:Platform=Win32 ^
+            /p:PreferredToolArchitecture=x86
+
+      - name: Find output
+        shell: powershell
+        run: |
+          Get-ChildItem -Path . -Recurse -Filter *.exe |
+            Select-Object FullName
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpyExternalMultihax-Win32
+          path: |
+            **/*.exe
