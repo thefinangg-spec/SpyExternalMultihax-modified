@@ -15,6 +15,50 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
 
+      - name: Retarget project to VS2022
+        shell: powershell
+        run: |
+          $file = "cheat1\cheat1.vcxproj"
+          (Get-Content $file -Raw) `
+            -replace '<PlatformToolset>v141</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
+            Set-Content $file
+
+      - name: Build
+        shell: cmd
+        run: |
+          msbuild SpyExternalMultihax.sln ^
+            /m ^
+            /p:Configuration=Release ^
+            /p:Platform=x86
+
+      - name: Find executables
+        shell: powershell
+        run: |
+          Get-ChildItem -Path . -Recurse -Filter *.exe |
+            Select-Object FullName
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpyExternalMultihax-x86
+          path: |
+            **/*.exename: Build
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+
       - name: Build
         shell: cmd
         run: |
